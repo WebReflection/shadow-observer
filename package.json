@@ -1,0 +1,29 @@
+{
+  "name": "shadow-observer",
+  "version": "0.0.0",
+  "description": "A MutationObserver that automatically picks up Shadow Roots when/if needed",
+  "main": "index.js",
+  "type": "module",
+  "types": "index.d.ts",
+  "module": "index.js",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build:types": "tsc -p tsconfig.json"
+  },
+  "keywords": [
+    "shadow",
+    "shadow-root",
+    "mutation",
+    "observer"
+  ],
+  "author": "Andrea Giammarchi",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}
