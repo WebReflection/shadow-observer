@@ -6,6 +6,13 @@
   "type": "module",
   "types": "index.d.ts",
   "module": "index.js",
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "types": "./index.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "index.js",
     "index.d.ts",
