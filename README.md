@@ -1,6 +1,14 @@
 # shadow-observer
 
+<sub><strong>Cover image: AI-generated art (Cursor), 2026. This file is documentation-only and is not covered by the MIT license on the package source code; see <a href="LICENSE">LICENSE</a> for software terms.</strong></sub>
+
+- - -
+
 `MutationObserver` does not cross into shadow trees. This package provides **`ShadowObserver`**, a small subclass that patches `Element.prototype.attachShadow` so that when you observe a node with `subtree: true` and a **`shadow`** mask, matching **author** shadow roots created later under that subtree are observed with the same options.
+
+**Use `ShadowObserver` instead of the global `MutationObserver` everywhere:** shadow forwarding is **strictly opt-in**. Unless `observe` is called with **`subtree: true` and a `shadow` property** set to a supported mask (`true`, `OPEN`, `CLOSED`, or `OPEN | CLOSED`), the class does **not** register any shadow hook for that observation—it just delegates to `MutationObserver.prototype.observe`, so callbacks and options behave like the native observer.
+
+Loading the module still installs one global `attachShadow` wrapper (so the feature can work when you do opt in); with no matching registrations, that wrapper is effectively a no-op aside from a small loop over empty state.
 
 Use it when you control load order and care about **programmatic** `attachShadow` in the **same** JavaScript realm (for example observing `document` or a known app root).
 
