@@ -8,9 +8,9 @@
  * **In scope:** programmatic `attachShadow` under the observed subtree; `ShadowRootInit.mode`
  * omitted is treated as `"open"` per the DOM spec.
  *
- * **Out of scope:** declarative shadow DOM (no `attachShadow` hook), closed roots you
- * cannot reference from script, other realms (e.g. iframes), and roots attached before
- * `observe()` runs.
+ * **Out of scope:** declarative shadow DOM (no `attachShadow` hook), non-author shadow
+ * trees that never return a `ShadowRoot` through this `attachShadow` patch, other realms
+ * (e.g. iframes), and roots attached before `observe()` runs.
  *
  * @module shadow-observer
  */

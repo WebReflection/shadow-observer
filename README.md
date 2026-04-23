@@ -54,11 +54,12 @@ Other values are ignored for shadow forwarding (the normal `observe` call still 
 
 - Programmatic `Element.attachShadow` on hosts that are **descendants** (in the composed ancestor sense) of the node you passed to `observe`.
 - Omitted `ShadowRootInit.mode` treated as `"open"`.
+- **Closed author shadow roots** when the `shadow` mask includes `CLOSED` (or `OPEN | CLOSED`). For `mode: "closed"`, `Element.shadowRoot` is `null` for outside code, but this module still `observe`s the `ShadowRoot` return value from inside the `attachShadow` patch—it does not rely on querying the host.
 
 ## Out of scope
 
 - **Declarative Shadow DOM** and any shadow tree that is not created through the patched `attachShadow` (no hook runs, so no automatic `observe` on that root).
-- **Closed** roots you can never reference from script (same platform limitation as always).
+- **Non-author (user-agent) and other** shadow trees that are never created through author `Element.prototype.attachShadow` in this realm, so no `ShadowRoot` is returned through the patch (open vs. closed is irrelevant to this limitation).
 - **Other realms** (e.g. iframes): each frame has its own `Element.prototype`; this patch applies only where the module runs.
 - Shadow roots **already attached** before you call `observe` (no retroactive attach event).
 
