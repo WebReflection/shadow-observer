@@ -4,7 +4,7 @@
 
 - - -
 
-**TL;DR** - I got tired [in here](https://github.com/whatwg/dom/issues/1287), I needed to move forward, enjoy 👋
+**TL;DR** - I got tired [in here](https://github.com/whatwg/dom/issues/1287#issuecomment-4305661429), I needed to move forward, enjoy 👋
 
 `MutationObserver` does not cross into shadow trees. This package provides **`ShadowObserver`**, a small subclass that patches `Element.prototype.attachShadow` so that when you observe a node with `subtree: true` and a **`shadow`** mask, matching **author** shadow roots created later under that subtree are observed with the same options.
 
