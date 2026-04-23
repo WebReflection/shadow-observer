@@ -1,6 +1,6 @@
 {
   "name": "shadow-observer",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "A MutationObserver that automatically picks up Shadow Roots when/if needed",
   "main": "index.js",
   "type": "module",
