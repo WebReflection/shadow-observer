@@ -28,10 +28,11 @@ const observer = new ShadowObserver((records) => {
 observer.observe(document.documentElement, {
   subtree: true,
   childList: true,
-  attributes: true,
   shadow: OPEN | CLOSED, // follow open and closed author roots
 });
 ```
+
+`subtree` still does **not** reach **into** existing shadow trees from the outer target: each `MutationObserverInit` flag applies per observed root. This package only adds a matching `observe` on **new** programmatic shadow roots, passing the same options there—so for example `attributes: true` affects attribute mutations **on that root’s subtree inside that shadow tree**, not “through” the light-DOM `subtree` from `document` alone.
 
 ### `shadow` option
 
