@@ -12,21 +12,38 @@
   <script type="module">
     import { ShadowObserver, OPEN, CLOSED } from '../index.js';
 
-    const mo = new ShadowObserver((records) => {
-      for (const { target, addedNodes } of records) {
-        for (const node of addedNodes) {
-          console.log({ target, node });
+    const createSO = name => {
+      const so = new ShadowObserver((records, observer) => {
+        console.log({ name, observer });
+        for (const { target, addedNodes, removedNodes } of records) {
+          if (addedNodes.length) {
+            console.log('addedNodes');
+            for (const node of addedNodes) {
+              console.log({ target, node });
+            }
+          }
+          if (removedNodes.length) {
+            console.log('removedNodes');
+            for (const node of removedNodes) {
+              console.log({ target, node });
+            }
+          }
         }
-      }
-    });
+      });
 
-    mo.observe(document, {
-      shadow: OPEN | CLOSED,
-      subtree: true,
-      childList: true,
-      // characterData: true,
-      // characterDataOldValue: true,
-    });
+      so.observe(document, {
+        shadow: OPEN | CLOSED,
+        subtree: true,
+        childList: true,
+        // characterData: true,
+        // characterDataOldValue: true,
+      });
+
+      return so;
+    };
+
+    const mo1 = createSO('mo1');
+    const mo2 = createSO('mo2');
 
     const styled = () => Object.assign(
       document.createElement('style'),

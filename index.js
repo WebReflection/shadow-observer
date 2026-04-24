@@ -84,9 +84,6 @@ if (!globalThis[so]) {
   /** @type {WeakMap<Node, [ShadowRoot, ShadowRootInit['mode']]>} */
   const shadowRoots = new WeakMap;
 
-  /** @type {WeakMap<MutationObserver, WeakRef<MutationObserver>>} */
-  const weakObserver = new WeakMap;
-
   /**
    * Whether `node` is `root` or a descendant of `root` in the composed ancestor chain
    * (light DOM `parentNode`, else `ShadowRoot.host`).
@@ -150,6 +147,9 @@ if (!globalThis[so]) {
     },
   });
 
+  /**
+   * @internal
+   */
   class ShadowRootList extends Array {
     /**
      * @param {ShadowRoot} shadowRoot
@@ -171,39 +171,67 @@ if (!globalThis[so]) {
     /** @type {Node} */
     #target;
 
-    /** @type {ShadowRootList} */
+    /** @type {unknown[]} */
     #addedNodes;
+
+    /** @type {unknown[]} */
+    #removedNodes;
 
     /**
      * @param {Node} target
-     * @param {ShadowRootList} addedNodes
+     * @param {unknown[]} addedNodes
+     * @param {unknown[]} removedNodes
      */
-    constructor(target, addedNodes) {
+    constructor(target, addedNodes, removedNodes) {
       this.#target = target;
       this.#addedNodes = addedNodes;
+      this.#removedNodes = removedNodes;
     }
 
     get type() { return 'childList' }
     get target() { return this.#target }
     get addedNodes() { return this.#addedNodes }
-    get removedNodes() { return [] }
+    get removedNodes() { return this.#removedNodes }
   }
 
   /**
-   * @param {*} extras
-   * @param {*} node
-   * @returns
+   * @param {function(unknown[], unknown): void} callback
+   * @param {unknown[]} extras
+   * @param {NodeList} nodes
+   */
+  const lopp = (callback, extras, nodes) => {
+    for (let i = 0, length = nodes.length; i < length; i++)
+      callback(extras, nodes[i]);
+  };
+
+  /**
+   * @param {unknown[]} extras
+   * @param {Node} node
+   */
+  const downgrade = (extras, node) => {
+    const args = shadowRoots.get(node);
+    if (args) {
+      const shadowRoot = args[0];
+      extras.push(new AugmentedRecord(node, [], new ShadowRootList(shadowRoot)));
+      // @ts-ignore
+      for (const node of shadowRoot.querySelectorAll('*'))
+        downgrade(extras, node);
+    }
+  };
+
+  /**
+   * @param {unknown[]} extras
+   * @param {Node} node
    */
   const upgraade = (extras, node) => {
     const args = shadowRoots.get(node);
     if (args) {
       const [shadowRoot, mode] = args;
-      shadowRoots.delete(node);
       propagate(node, shadowRoot, mode);
       // this was for closed roots only but I think it'd be easier for whoever
       // needs to handle ShadowRoots to just receive all of them in one go
       // as opposite of checking it node.shadowRoot is null or something
-      extras.push(new AugmentedRecord(node, new ShadowRootList(shadowRoot)));
+      extras.push(new AugmentedRecord(node, new ShadowRootList(shadowRoot), []));
       // @ts-ignore
       for (const node of shadowRoot.querySelectorAll('*'))
         upgraade(extras, node);
@@ -218,6 +246,9 @@ if (!globalThis[so]) {
    * @internal
    */
   class ShadowObserverImpl extends MutationObserver {
+    /** @type {WeakRef<ShadowObserverImpl>} */
+    #wr;
+
     /**
      * @param {MutationCallback} callback
      */
@@ -228,9 +259,9 @@ if (!globalThis[so]) {
           const record = records[i];
           extras.push(record);
           if (record.type === 'childList') {
-            const { addedNodes } = record;
-            for (let j = 0, length = addedNodes.length; j < length; j++)
-              upgraade(extras, addedNodes[j]);
+            const { addedNodes, removedNodes } = record;
+            lopp(downgrade, extras, removedNodes);
+            lopp(upgraade, extras, addedNodes);
           }
         }
         callback.call(
@@ -239,6 +270,8 @@ if (!globalThis[so]) {
           ...rest
         );
       });
+
+      this.#wr = new WeakRef(this);
     }
 
     /**
@@ -256,14 +289,13 @@ if (!globalThis[so]) {
         const shadow = options.shadow === true ? OPEN : (options.shadow ?? 0);
         if (masks.has(shadow)) {
           const mask = /** @type {ShadowObserverMask} */ (shadow);
-          let wr = weakObserver.get(this);
-          if (!wr) weakObserver.set(this, wr = new WeakRef(this));
+          const wr = this.#wr;
           let details = observers.get(wr);
           if (!details) observers.set(wr, details = []);
           details.push([new WeakRef(target), { ...options, shadow: mask }]);
         }
       }
-      super.observe(target, options);
+      observe.call(this, target, options);
     }
   }
 
