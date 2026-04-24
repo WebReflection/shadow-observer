@@ -74,6 +74,7 @@ export const CLOSED = /** @type {2} */ (1 << 1);
 const so = Symbol.for('shadow-observer');
 
 if (!globalThis[so]) {
+  const fr = new FinalizationRegistry(wr => observers.delete(wr));
 
   /** @type {ReadonlySet<number>} */
   const masks = new Set([OPEN, CLOSED, OPEN | CLOSED]);
@@ -106,7 +107,7 @@ if (!globalThis[so]) {
    * @param {ShadowRootInit['mode']} mode
    */
   const propagate = (parentNode, shadowRoot, mode) => {
-    for (const [wr, details] of [...observers]) {
+    for (const [wr, details] of observers) {
       const observer = wr.deref();
       if (observer) {
         for (let i = 0; i < details.length; i++) {
@@ -121,14 +122,12 @@ if (!globalThis[so]) {
           else details.splice(i--, 1);
         }
       }
-      else observers.delete(wr);
     }
   };
 
   const { attachShadow } = Element.prototype;
   const { observe } = MutationObserver.prototype;
   const { defineProperty, freeze } = Object;
-  const { from } = Array;
 
   defineProperty(Element.prototype, 'attachShadow', {
     /**
@@ -291,7 +290,10 @@ if (!globalThis[so]) {
           const mask = /** @type {ShadowObserverMask} */ (shadow);
           const wr = this.#wr;
           let details = observers.get(wr);
-          if (!details) observers.set(wr, details = []);
+          if (!details) {
+            observers.set(wr, details = []);
+            fr.register(this, wr);
+          }
           details.push([new WeakRef(target), { ...options, shadow: mask }]);
         }
       }

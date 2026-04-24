@@ -13,8 +13,8 @@
     import { ShadowObserver, OPEN, CLOSED } from '../index.js';
 
     const createSO = name => {
-      const so = new ShadowObserver((records, observer) => {
-        console.log({ name, observer });
+      const so = new ShadowObserver((records) => {
+        console.log(name);
         for (const { target, addedNodes, removedNodes } of records) {
           if (addedNodes.length) {
             console.log('addedNodes');
@@ -42,8 +42,8 @@
       return so;
     };
 
-    const mo1 = createSO('mo1');
-    const mo2 = createSO('mo2');
+    createSO('SO1');
+    globalThis.shadowObserver = createSO('SO2');
 
     const styled = () => Object.assign(
       document.createElement('style'),
