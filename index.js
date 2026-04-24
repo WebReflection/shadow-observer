@@ -200,8 +200,10 @@ if (!globalThis[so]) {
       const [shadowRoot, mode] = args;
       shadowRoots.delete(node);
       propagate(node, shadowRoot, mode);
-      if (mode === 'closed')
-        extras.push(new AugmentedRecord(node, new ShadowRootList(shadowRoot)));
+      // this was for closed roots only but I think it'd be easier for whoever
+      // needs to handle ShadowRoots to just receive all of them in one go
+      // as opposite of checking it node.shadowRoot is null or something
+      extras.push(new AugmentedRecord(node, new ShadowRootList(shadowRoot)));
       // @ts-ignore
       for (const node of shadowRoot.querySelectorAll('*'))
         upgraade(extras, node);
@@ -224,17 +226,18 @@ if (!globalThis[so]) {
         const extras = [];
         for (let i = 0, length = records.length; i < length; i++) {
           const record = records[i];
+          extras.push(record);
           if (record.type === 'childList') {
             const { addedNodes } = record;
             for (let j = 0, length = addedNodes.length; j < length; j++)
               upgraade(extras, addedNodes[j]);
           }
         }
-        if (extras.length) {
-          // @ts-ignore
-          records = from(records).concat(extras);
-        }
-        callback.call(this, records, ...rest);
+        callback.call(
+          this,
+          extras.length === records.length ? records : extras,
+          ...rest
+        );
       });
     }
 
