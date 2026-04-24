@@ -6,41 +6,37 @@
  * **In scope:** programmatic `attachShadow` under the observed subtree; `ShadowRootInit.mode`
  * omitted is treated as `"open"` per the DOM spec.
  *
- * **Out of scope:** declarative shadow DOM (no `attachShadow` hook), closed roots you
- * cannot reference from script, other realms (e.g. iframes), and roots attached before
- * `observe()` runs.
+ * **Out of scope:** declarative shadow DOM (no `attachShadow` hook), non-author shadow
+ * trees that never return a `ShadowRoot` through this `attachShadow` patch, other realms
+ * (e.g. iframes), and roots attached before `observe()` runs.
  *
  * @module shadow-observer
  */
 /**
  * Include **open** programmatic shadow roots when forwarding `observe` onto new roots.
  * @readonly
+ * @type {1}
  */
-export const OPEN: number;
+export const OPEN: 1;
 /**
  * Include **closed** programmatic shadow roots when forwarding `observe` onto new roots.
  * @readonly
+ * @type {2}
  */
-export const CLOSED: number;
+export const CLOSED: 2;
 /**
- * {@link MutationObserver} that optionally follows {@link Element.attachShadow} under an
- * observed subtree when `observe` is called with `subtree` and a supported `shadow` mask.
- *
- * @extends {MutationObserver}
+ * Instance created by `new ShadowObserver(...)`.
  */
-export class ShadowObserver extends MutationObserver {
-    /**
-     * Like {@link MutationObserver.observe}, but when `options.subtree` is true and
-     * `options` includes a `shadow` property with a supported mask, also registers to call
-     * `observe` on new shadow roots that match the mask and whose host lies under `target`.
-     *
-     * @override
-     * @param {Node} target
-     * @param {ShadowOptions} options
-     * @returns {void}
-     */
-    override observe(target: Node, options: ShadowOptions): void;
-}
+export type ShadowObserver = MutationObserver & {
+    observe(target: Node, options: ShadowObserverInit): void;
+};
+/**
+ * Singleton constructor (per realm) so duplicate bundles share one implementation and
+ * `attachShadow` is patched at most once.
+ *
+ * @type {ShadowObserverConstructor}
+ */
+export const ShadowObserver: ShadowObserverConstructor;
 /**
  * {@link MutationObserverInit} plus optional `shadow` controls for {@link ShadowObserver}.
  *
@@ -52,10 +48,15 @@ export class ShadowObserver extends MutationObserver {
  * Registration runs only when `subtree` is true and the `shadow` key is present; other
  * values are ignored.
  */
-export type ShadowOptions = MutationObserverInit & {
-    shadow?: true | number | number | (number | number);
+export type ShadowObserverInit = MutationObserverInit & {
+    shadow?: true | typeof OPEN | typeof CLOSED | (typeof OPEN | typeof CLOSED);
 };
-export type ShadowDetailsEntry = [WeakRef<Node>, ShadowOptions & {
-    shadow: number | number | (number | number);
+export type ShadowObserverMask = typeof OPEN | typeof CLOSED | (typeof OPEN | typeof CLOSED);
+export type ShadowDetailsEntry = [WeakRef<Node>, ShadowObserverInit & {
+    shadow: ShadowObserverMask;
 }];
 export type ShadowDetails = ShadowDetailsEntry[];
+/**
+ * The {@link ShadowObserver} export: a {@link MutationObserver} subclass constructor.
+ */
+export type ShadowObserverConstructor = new (callback: MutationCallback) => ShadowObserver;

@@ -18,17 +18,16 @@
 /**
  * Include **open** programmatic shadow roots when forwarding `observe` onto new roots.
  * @readonly
+ * @type {1}
  */
-export const OPEN = 1 << 0;
+export const OPEN = /** @type {1} */ (1 << 0);
 
 /**
  * Include **closed** programmatic shadow roots when forwarding `observe` onto new roots.
  * @readonly
+ * @type {2}
  */
-export const CLOSED = 1 << 1;
-
-/** @type {ReadonlySet<number>} */
-const shadow = new Set([OPEN, CLOSED, OPEN | CLOSED]);
+export const CLOSED = /** @type {2} */ (1 << 1);
 
 /**
  * {@link MutationObserverInit} plus optional `shadow` controls for {@link ShadowObserver}.
@@ -42,113 +41,236 @@ const shadow = new Set([OPEN, CLOSED, OPEN | CLOSED]);
  * values are ignored.
  *
  * @typedef {MutationObserverInit & {
- *   shadow?: true | OPEN | CLOSED | (OPEN | CLOSED)
- * }} ShadowOptions
+ *   shadow?: true | typeof OPEN | typeof CLOSED | (typeof OPEN | typeof CLOSED)
+ * }} ShadowObserverInit
  */
 
 /**
- * @typedef {[WeakRef<Node>, ShadowOptions & { shadow: OPEN | CLOSED | (OPEN | CLOSED) }]} ShadowDetailsEntry
+ * @typedef {typeof OPEN | typeof CLOSED | (typeof OPEN | typeof CLOSED)} ShadowObserverMask
+ */
+
+/**
+ * @typedef {[WeakRef<Node>, ShadowObserverInit & { shadow: ShadowObserverMask }]} ShadowDetailsEntry
  */
 
 /**
  * @typedef {ShadowDetailsEntry[]} ShadowDetails
  */
 
-const { MutationObserver } = globalThis;
-
-/** @type {Map<WeakRef<MutationObserver>, ShadowDetails>} */
-const observers = new Map();
-
-/** @type {WeakMap<MutationObserver, WeakRef<MutationObserver>>} */
-const weakObserver = new WeakMap();
+/**
+ * Instance created by `new ShadowObserver(...)`.
+ *
+ * @typedef {MutationObserver & {
+ *   observe(target: Node, options: ShadowObserverInit): void;
+ * }} ShadowObserver
+ */
 
 /**
- * Whether `node` is `root` or a descendant of `root` in the composed ancestor chain
- * (light DOM `parentNode`, else `ShadowRoot.host`).
+ * The {@link ShadowObserver} export: a {@link MutationObserver} subclass constructor.
  *
- * @param {Node} node
- * @param {Node} root
- * @returns {boolean}
+ * @typedef {new (callback: MutationCallback) => ShadowObserver} ShadowObserverConstructor
  */
-const inIt = (node, root) => {
-  while (node) {
-    if (node === root) return true;
-    node = node.parentNode ?? /** @type {ShadowRoot} */ (node).host;
-  }
-  return false;
-};
 
-const { attachShadow } = Element.prototype;
-Object.defineProperty(Element.prototype, 'attachShadow', {
+const so = Symbol.for('shadow-observer');
+
+if (!globalThis[so]) {
+
+  /** @type {ReadonlySet<number>} */
+  const masks = new Set([OPEN, CLOSED, OPEN | CLOSED]);
+
+  /** @type {Map<WeakRef<MutationObserver>, ShadowDetails>} */
+  const observers = new Map;
+
+  /** @type {WeakMap<Node, [ShadowRoot, ShadowRootInit['mode']]>} */
+  const shadowRoots = new WeakMap;
+
+  /** @type {WeakMap<MutationObserver, WeakRef<MutationObserver>>} */
+  const weakObserver = new WeakMap;
+
   /**
-   * @this {Element}
-   * @param {ShadowRootInit} options
-   * @returns {ShadowRoot}
+   * Whether `node` is `root` or a descendant of `root` in the composed ancestor chain
+   * (light DOM `parentNode`, else `ShadowRoot.host`).
+   *
+   * @param {Node} node
+   * @param {Node} root
+   * @returns {boolean}
    */
-  value: function (options) {
-    const result = attachShadow.call(this, options);
-    const drop = [];
-    for (const [wr, details] of observers) {
+  const inIt = (node, root) => {
+    while (node) {
+      if (node === root) return true;
+      node = node.parentNode ?? /** @type {ShadowRoot} */ (node).host;
+    }
+    return false;
+  };
+
+  /**
+   * @param {Node} parentNode
+   * @param {ShadowRoot} shadowRoot
+   * @param {ShadowRootInit['mode']} mode
+   */
+  const propagate = (parentNode, shadowRoot, mode) => {
+    for (const [wr, details] of [...observers]) {
       const observer = wr.deref();
       if (observer) {
         for (let i = 0; i < details.length; i++) {
-          const [targetWr, opts] = details[i];
-          const target = targetWr.deref();
+          const [wr, opts] = details[i];
+          const target = wr.deref();
           if (target) {
-            switch (options.mode ?? 'open') {
-              case 'open':
-                if ((opts.shadow & OPEN) && inIt(this, target))
-                  observer.observe(result, opts);
-                break;
-              case 'closed':
-                if ((opts.shadow & CLOSED) && inIt(this, target))
-                  observer.observe(result, opts);
-                break;
-            }
+            if (mode === 'open' && (opts.shadow & OPEN) && inIt(parentNode, target))
+              observe.call(observer, shadowRoot, opts);
+            else if (mode === 'closed' && (opts.shadow & CLOSED) && inIt(parentNode, target))
+              observe.call(observer, shadowRoot, opts);
           }
           else details.splice(i--, 1);
         }
       }
-      else drop.push(wr);
+      else observers.delete(wr);
+    }
+  };
+
+  const { attachShadow } = Element.prototype;
+  const { observe } = MutationObserver.prototype;
+  const { defineProperty, freeze } = Object;
+  const { from } = Array;
+
+  defineProperty(Element.prototype, 'attachShadow', {
+    /**
+     * @this {Element}
+     * @param {ShadowRootInit} options
+     * @returns {ShadowRoot}
+     */
+    value: function (options) {
+      const shadowRoot = attachShadow.call(this, options);
+      const { mode } = options;
+      if (this.isConnected)
+        propagate(this, shadowRoot, mode);
+      else
+        shadowRoots.set(this, [shadowRoot, mode]);
+      return shadowRoot;
+    },
+  });
+
+  class ShadowRootList extends Array {
+    /**
+     * @param {ShadowRoot} shadowRoot
+     */
+    constructor(shadowRoot) {
+      freeze(super(shadowRoot));
     }
 
-    for (let i = 0; i < drop.length; i++)
-      observers.delete(drop[i]);
+    item(index) {
+      return this[index];
+    }
+  }
 
-    return result;
-  },
-});
+  /**
+   * @internal
+   */
+  class AugmentedRecord {
+
+    /** @type {Node} */
+    #target;
+
+    /** @type {ShadowRootList} */
+    #addedNodes;
+
+    /**
+     * @param {Node} target
+     * @param {ShadowRootList} addedNodes
+     */
+    constructor(target, addedNodes) {
+      this.#target = target;
+      this.#addedNodes = addedNodes;
+    }
+
+    get type() { return 'childList' }
+    get target() { return this.#target }
+    get addedNodes() { return this.#addedNodes }
+    get removedNodes() { return [] }
+  }
+
+  /**
+   * @param {*} extras
+   * @param {*} node
+   * @returns
+   */
+  const upgraade = (extras, node) => {
+    const args = shadowRoots.get(node);
+    if (args) {
+      const [shadowRoot, mode] = args;
+      shadowRoots.delete(node);
+      propagate(node, shadowRoot, mode);
+      if (mode === 'closed')
+        extras.push(new AugmentedRecord(node, new ShadowRootList(shadowRoot)));
+      // @ts-ignore
+      for (const node of shadowRoot.querySelectorAll('*'))
+        upgraade(extras, node);
+    }
+  };
+
+  /**
+   * {@link MutationObserver} that optionally follows {@link Element.attachShadow} under an
+   * observed subtree when `observe` is called with `subtree` and a supported `shadow` mask.
+   *
+   * @extends {MutationObserver}
+   * @internal
+   */
+  class ShadowObserverImpl extends MutationObserver {
+    /**
+     * @param {MutationCallback} callback
+     */
+    constructor(callback) {
+      super(function (records, ...rest) {
+        const extras = [];
+        for (let i = 0, length = records.length; i < length; i++) {
+          const record = records[i];
+          if (record.type === 'childList') {
+            const { addedNodes } = record;
+            for (let j = 0, length = addedNodes.length; j < length; j++)
+              upgraade(extras, addedNodes[j]);
+          }
+        }
+        if (extras.length) {
+          // @ts-ignore
+          records = from(records).concat(extras);
+        }
+        callback.call(this, records, ...rest);
+      });
+    }
+
+    /**
+     * Like {@link MutationObserver.observe}, but when `options.subtree` is true and
+     * `options` includes a `shadow` property with a supported mask, also registers to call
+     * `observe` on new shadow roots that match the mask and whose host lies under `target`.
+     *
+     * @override
+     * @param {Node} target
+     * @param {ShadowObserverInit} options
+     * @returns {void}
+     */
+    observe(target, options) {
+      if (options?.subtree && options && 'shadow' in options) {
+        const shadow = options.shadow === true ? OPEN : (options.shadow ?? 0);
+        if (masks.has(shadow)) {
+          const mask = /** @type {ShadowObserverMask} */ (shadow);
+          let wr = weakObserver.get(this);
+          if (!wr) weakObserver.set(this, wr = new WeakRef(this));
+          let details = observers.get(wr);
+          if (!details) observers.set(wr, details = []);
+          details.push([new WeakRef(target), { ...options, shadow: mask }]);
+        }
+      }
+      super.observe(target, options);
+    }
+  }
+
+  defineProperty(globalThis, so, { value: ShadowObserverImpl });
+}
 
 /**
- * {@link MutationObserver} that optionally follows {@link Element.attachShadow} under an
- * observed subtree when `observe` is called with `subtree` and a supported `shadow` mask.
+ * Singleton constructor (per realm) so duplicate bundles share one implementation and
+ * `attachShadow` is patched at most once.
  *
- * @extends {MutationObserver}
+ * @type {ShadowObserverConstructor}
  */
-export class ShadowObserver extends MutationObserver {
-  /**
-   * Like {@link MutationObserver.observe}, but when `options.subtree` is true and
-   * `options` includes a `shadow` property with a supported mask, also registers to call
-   * `observe` on new shadow roots that match the mask and whose host lies under `target`.
-   *
-   * @override
-   * @param {Node} target
-   * @param {ShadowOptions} options
-   * @returns {void}
-   */
-  observe(target, options) {
-    if (options?.subtree && options && 'shadow' in options) {
-      const value = options.shadow === true ? OPEN : (options.shadow ?? 0);
-      if (shadow.has(value)) {
-        const mask =
-          /** @type {OPEN | CLOSED | (OPEN | CLOSED)} */ (value);
-        let wr = weakObserver.get(this);
-        if (!wr) weakObserver.set(this, wr = new WeakRef(this));
-        let details = observers.get(wr);
-        if (!details) observers.set(wr, details = []);
-        details.push([new WeakRef(target), { ...options, shadow: mask }]);
-      }
-    }
-    super.observe(target, options);
-  }
-}
+export const ShadowObserver = /** @type {ShadowObserverConstructor} */ (globalThis[so]);

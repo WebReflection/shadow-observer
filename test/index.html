@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shadow Observer</title>
+  <style>
+    body {
+      font-family: sans-serif;
+    }
+  </style>
+  <script type="module">
+    import { ShadowObserver, OPEN, CLOSED } from '../index.js';
+
+    const mo = new ShadowObserver((records) => {
+      for (const { target, addedNodes } of records) {
+        for (const node of addedNodes) {
+          console.log({ target, node });
+        }
+      }
+    });
+
+    mo.observe(document, {
+      shadow: OPEN | CLOSED,
+      subtree: true,
+      childList: true,
+      // characterData: true,
+      // characterDataOldValue: true,
+    });
+
+    const styled = () => Object.assign(
+      document.createElement('style'),
+      {
+        textContent: `
+          :host {
+            display: block;
+            padding: 8px;
+          }
+        `,
+      },
+    );
+
+    function XFoo() {
+      const div = document.createElement('div');
+      div.dataset.x = 'foo';
+      div.append('div-x-foo');
+      return div;
+    }
+
+    customElements.define('x-foo', class extends HTMLElement {
+      constructor(...args) {
+        super(...args).attachShadow({ mode: 'open' }).append(styled(), 'x-foo');
+        setTimeout(() => {
+          this.shadowRoot.append(document.createElement('hr'));
+        }, 1000);
+      }
+    });
+
+    function XBar() {
+      const div = document.createElement('div');
+      div.dataset.x = 'bar';
+      div.append('div-x-bar', document.createElement('hr'), XFoo());
+      return div;
+    }
+
+    customElements.define('x-bar', class extends HTMLElement {
+      constructor(...args) {
+        const sr = super(...args).attachShadow({ mode: 'closed' });
+        sr.append(styled(), 'x-bar', document.createElement('hr'), document.createElement('x-foo'));
+      }
+    });
+
+    document.body.append(
+      document.createElement('x-bar'),
+    );
+
+    // setTimeout(() => {
+    //   // lazy.append(document.createElement('x-bar'));
+    //   // lazy.innerHTML = '<x-bar></x-bar>';
+    // }, 1000);
+  </script>
+</head>
+<body>
+  <h1>Shadow Observer</h1>
+  <div id="lazy"></div>
+  <!-- <x-bar></x-bar> -->
+</body>
+</html>

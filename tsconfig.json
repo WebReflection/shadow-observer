@@ -8,8 +8,10 @@
     "moduleResolution": "NodeNext",
     "noEmit": false,
     "skipLibCheck": true,
+    "stripInternal": true,
     "strict": false,
-    "target": "ES2022"
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"]
   },
   "include": ["./index.js"],
   "exclude": ["node_modules", "types", "test"]
