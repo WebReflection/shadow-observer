@@ -85,6 +85,9 @@ if (!globalThis[so]) {
   /** @type {WeakMap<Node, [ShadowRoot, ShadowRootInit['mode']]>} */
   const shadowRoots = new WeakMap;
 
+  /** @type {WeakMap<ShadowObserverImpl, WeakRef<ShadowObserverImpl>>} */
+  const observersWR = new WeakMap;
+
   /**
    * Whether `node` is `root` or a descendant of `root` in the composed ancestor chain
    * (light DOM `parentNode`, else `ShadowRoot.host`).
@@ -157,6 +160,10 @@ if (!globalThis[so]) {
       freeze(super(shadowRoot));
     }
 
+    /**
+     * @param {number} index
+     * @returns {ShadowRoot}
+     */
     item(index) {
       return this[index];
     }
@@ -245,32 +252,26 @@ if (!globalThis[so]) {
    * @internal
    */
   class ShadowObserverImpl extends MutationObserver {
-    /** @type {WeakRef<ShadowObserverImpl>} */
-    #wr;
-
     /**
      * @param {MutationCallback} callback
      */
     constructor(callback) {
-      super(function (records, ...rest) {
-        const extras = [];
-        for (let i = 0, length = records.length; i < length; i++) {
-          const record = records[i];
-          extras.push(record);
-          if (record.type === 'childList') {
-            const { addedNodes, removedNodes } = record;
-            lopp(downgrade, extras, removedNodes);
-            lopp(upgraade, extras, addedNodes);
+      const self = super(function (records, ...rest) {
+        // @ts-ignore
+        if (observersWR.has(self)) {
+          const extras = [];
+          for (let i = 0, length = records.length; i < length; i++) {
+            const record = records[i];
+            extras.push(record);
+            if (record.type === 'childList') {
+              lopp(downgrade, extras, record.removedNodes);
+              lopp(upgraade, extras, record.addedNodes);
+            }
           }
+          records = extras;
         }
-        callback.call(
-          this,
-          extras.length === records.length ? records : extras,
-          ...rest
-        );
+        callback.call(this, records, ...rest);
       });
-
-      this.#wr = new WeakRef(this);
     }
 
     /**
@@ -288,7 +289,8 @@ if (!globalThis[so]) {
         const shadow = options.shadow === true ? OPEN : (options.shadow ?? 0);
         if (masks.has(shadow)) {
           const mask = /** @type {ShadowObserverMask} */ (shadow);
-          const wr = this.#wr;
+          let wr = observersWR.get(this);
+          if (!wr) observersWR.set(this, wr = new WeakRef(this));
           let details = observers.get(wr);
           if (!details) {
             observers.set(wr, details = []);
