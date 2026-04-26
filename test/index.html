@@ -19,13 +19,13 @@
           if (addedNodes.length) {
             console.log('addedNodes');
             for (const node of addedNodes) {
-              console.log({ target, node });
+              console.log({ target, host: target.host, node });
             }
           }
           if (removedNodes.length) {
             console.log('removedNodes');
             for (const node of removedNodes) {
-              console.log({ target, node });
+              console.log({ target, host: target.host, node });
             }
           }
         }

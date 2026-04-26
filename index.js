@@ -97,6 +97,8 @@ if (!globalThis[so]) {
    * @returns {boolean}
    */
   const inIt = (node, root) => {
+    if (node.ownerDocument === root)
+      return true;
     while (node) {
       if (node === root) return true;
       node = node.parentNode ?? /** @type {ShadowRoot} */ (node).host;
@@ -229,7 +231,7 @@ if (!globalThis[so]) {
    * @param {unknown[]} extras
    * @param {Node} node
    */
-  const upgraade = (extras, node) => {
+  const upgrade = (extras, node) => {
     const args = shadowRoots.get(node);
     if (args) {
       const [shadowRoot, mode] = args;
@@ -240,7 +242,7 @@ if (!globalThis[so]) {
       extras.push(new AugmentedRecord(node, new ShadowRootList(shadowRoot), []));
       // @ts-ignore
       for (const node of shadowRoot.querySelectorAll('*'))
-        upgraade(extras, node);
+        upgrade(extras, node);
     }
   };
 
@@ -256,16 +258,16 @@ if (!globalThis[so]) {
      * @param {MutationCallback} callback
      */
     constructor(callback) {
-      const self = super(function (records, ...rest) {
+      super(function (records, ...rest) {
         // @ts-ignore
-        if (observersWR.has(self)) {
+        if (observersWR.has(this)) {
           const extras = [];
           for (let i = 0, length = records.length; i < length; i++) {
             const record = records[i];
             extras.push(record);
             if (record.type === 'childList') {
               lopp(downgrade, extras, record.removedNodes);
-              lopp(upgraade, extras, record.addedNodes);
+              lopp(upgrade, extras, record.addedNodes);
             }
           }
           records = extras;
