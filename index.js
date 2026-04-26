@@ -88,7 +88,16 @@ if (!globalThis[so]) {
   /** @type {WeakMap<ShadowObserverImpl, WeakRef<ShadowObserverImpl>>} */
   const observersWR = new WeakMap;
 
-  const fallback = [];
+  /**
+   * @param {WeakRef<MutationObserver>} wr
+   * @param {ShadowObserverImpl=} observer
+   */
+  const dropObserver = (wr, observer) => {
+    fr.unregister(wr);
+    observers.delete(wr);
+    if (observer)
+      observersWR.delete(observer);
+  };
 
   /**
    * Whether `node` is `root` or a descendant of `root` in the composed ancestor chain
@@ -109,6 +118,31 @@ if (!globalThis[so]) {
   };
 
   /**
+   * @param {ShadowDetails} details
+   * @param {Node} parentNode
+   * @param {ShadowRootInit['mode']} mode
+   * @param {(options: ShadowObserverInit & { shadow: ShadowObserverMask }) => false | void} callback
+   * @returns {boolean}
+   */
+  const eachAccepted = (details, parentNode, mode, callback) => {
+    const shadow = mode === 'open' ? OPEN : mode === 'closed' ? CLOSED : 0;
+    let accepted = false;
+    for (let i = 0; i < details.length; i++) {
+      const [wr, opts] = details[i];
+      const target = wr.deref();
+      if (target) {
+        if ((opts.shadow & shadow) && inIt(parentNode, target)) {
+          accepted = true;
+          if (callback(opts) === false)
+            break;
+        }
+      }
+      else details.splice(i--, 1);
+    }
+    return accepted;
+  };
+
+  /**
    * @param {Node} parentNode
    * @param {ShadowRoot} shadowRoot
    * @param {ShadowRootInit['mode']} mode
@@ -117,23 +151,38 @@ if (!globalThis[so]) {
     for (const [wr, details] of observers) {
       const observer = wr.deref();
       if (observer) {
-        for (let i = 0; i < details.length; i++) {
-          const [wr, opts] = details[i];
-          const target = wr.deref();
-          if (target) {
-            if (mode === 'open' && (opts.shadow & OPEN) && inIt(parentNode, target))
-              observe.call(observer, shadowRoot, opts);
-            else if (mode === 'closed' && (opts.shadow & CLOSED) && inIt(parentNode, target))
-              observe.call(observer, shadowRoot, opts);
-          }
-          else details.splice(i--, 1);
-        }
+        eachAccepted(details, parentNode, mode, opts => {
+          observe.call(observer, shadowRoot, opts);
+        });
+        if (!details.length)
+          dropObserver(wr, observer);
+      }
+      else {
+        dropObserver(wr);
       }
     }
   };
 
+  /**
+   * @param {ShadowObserverImpl} observer
+   * @param {Node} parentNode
+   * @param {ShadowRootInit['mode']} mode
+   * @returns {boolean}
+   */
+  const accepts = (observer, parentNode, mode) => {
+    const wr = observersWR.get(observer);
+    const details = observers.get(wr);
+    if (details) {
+      const accepted = eachAccepted(details, parentNode, mode, () => false);
+      if (!details.length)
+        dropObserver(wr, observer);
+      return accepted;
+    }
+    return false;
+  };
+
   const { attachShadow } = Element.prototype;
-  const { observe } = MutationObserver.prototype;
+  const { disconnect, observe } = MutationObserver.prototype;
   const { defineProperty, freeze } = Object;
 
   defineProperty(Element.prototype, 'attachShadow', {
@@ -205,58 +254,64 @@ if (!globalThis[so]) {
   }
 
   /**
-   * @param {function(unknown[], unknown): void} callback
+   * @param {function(unknown[], Node, ShadowObserverImpl): void} callback
    * @param {unknown[]} extras
    * @param {NodeList} nodes
+   * @param {ShadowObserverImpl} observer
    */
-  const lopp = (callback, extras, nodes) => {
+  const lopp = (callback, extras, nodes, observer) => {
     for (let i = 0, length = nodes.length; i < length; i++)
-      callback(extras, nodes[i]);
+      callback(extras, nodes[i], observer);
   };
 
   /**
    * @param {upgrade | downgrade} callback
    * @param {unknown[]} extras
    * @param {Element | ShadowRoot} parentNode
+   * @param {ShadowObserverImpl} observer
    */
-  const forEach = (callback, extras, parentNode) => {
+  const forEach = (callback, extras, parentNode, observer) => {
     // @ts-ignore
     for (const node of parentNode.querySelectorAll('*'))
-      callback(extras, node);
+      callback(extras, node, observer);
   };
 
   /**
    * @param {unknown[]} extras
    * @param {Node} node
+   * @param {ShadowObserverImpl} observer
    */
-  const downgrade = (extras, node) => {
+  const downgrade = (extras, node, observer) => {
     const args = shadowRoots.get(node);
     if (args) {
-      const shadowRoot = args[0];
-      extras.push(new AugmentedRecord(node, [], new ShadowRootList(shadowRoot)));
+      const [shadowRoot, mode] = args;
+      if (accepts(observer, node, mode))
+        extras.push(new AugmentedRecord(node, [], new ShadowRootList(shadowRoot)));
       // @ts-ignore
-      forEach(downgrade, extras, shadowRoot);
+      forEach(downgrade, extras, shadowRoot, observer);
     }
     else if (node.nodeType === 1) {
-      forEach(downgrade, extras, /** @type {Element} */ (node));
+      forEach(downgrade, extras, /** @type {Element} */ (node), observer);
     }
   };
 
   /**
    * @param {unknown[]} extras
    * @param {Node} node
+   * @param {ShadowObserverImpl} observer
    */
-  const upgrade = (extras, node) => {
+  const upgrade = (extras, node, observer) => {
     const args = shadowRoots.get(node);
     if (args) {
       const [shadowRoot, mode] = args;
       propagate(node, shadowRoot, mode);
-      extras.push(new AugmentedRecord(node, new ShadowRootList(shadowRoot), []));
+      if (accepts(observer, node, mode))
+        extras.push(new AugmentedRecord(node, new ShadowRootList(shadowRoot), []));
       // @ts-ignore
-      forEach(upgrade, extras, shadowRoot);
+      forEach(upgrade, extras, shadowRoot, observer);
     }
     else if (node.nodeType === 1) {
-      forEach(upgrade, extras, /** @type {Element} */ (node));
+      forEach(upgrade, extras, /** @type {Element} */ (node), observer);
     }
   };
 
@@ -273,21 +328,32 @@ if (!globalThis[so]) {
      */
     constructor(callback) {
       super(function (records, ...rest) {
-        // @ts-ignore
-        if (observersWR.has(this)) {
+        const observer = /** @type {ShadowObserverImpl} */ (this);
+        if (observersWR.has(observer)) {
           const extras = [];
           for (let i = 0, length = records.length; i < length; i++) {
             const record = records[i];
             extras.push(record);
             if (record.type === 'childList') {
-              lopp(downgrade, extras, record.removedNodes);
-              lopp(upgrade, extras, record.addedNodes);
+              lopp(downgrade, extras, record.removedNodes, observer);
+              lopp(upgrade, extras, record.addedNodes, observer);
             }
           }
           records = extras;
         }
         callback.call(this, records, ...rest);
       });
+    }
+
+    /**
+     * @override
+     * @returns {void}
+     */
+    disconnect() {
+      const wr = observersWR.get(this);
+      if (wr)
+        dropObserver(wr, this);
+      disconnect.call(this);
     }
 
     /**
@@ -310,7 +376,7 @@ if (!globalThis[so]) {
           let details = observers.get(wr);
           if (!details) {
             observers.set(wr, details = []);
-            fr.register(this, wr);
+            fr.register(this, wr, wr);
           }
           details.push([new WeakRef(target), { ...options, shadow: mask }]);
         }
