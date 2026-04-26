@@ -88,6 +88,8 @@ if (!globalThis[so]) {
   /** @type {WeakMap<ShadowObserverImpl, WeakRef<ShadowObserverImpl>>} */
   const observersWR = new WeakMap;
 
+  const fallback = [];
+
   /**
    * Whether `node` is `root` or a descendant of `root` in the composed ancestor chain
    * (light DOM `parentNode`, else `ShadowRoot.host`).
@@ -213,6 +215,17 @@ if (!globalThis[so]) {
   };
 
   /**
+   * @param {upgrade | downgrade} callback
+   * @param {unknown[]} extras
+   * @param {Element | ShadowRoot} parentNode
+   */
+  const forEach = (callback, extras, parentNode) => {
+    // @ts-ignore
+    for (const node of parentNode.querySelectorAll('*'))
+      callback(extras, node);
+  };
+
+  /**
    * @param {unknown[]} extras
    * @param {Node} node
    */
@@ -222,8 +235,10 @@ if (!globalThis[so]) {
       const shadowRoot = args[0];
       extras.push(new AugmentedRecord(node, [], new ShadowRootList(shadowRoot)));
       // @ts-ignore
-      for (const node of shadowRoot.querySelectorAll('*'))
-        downgrade(extras, node);
+      forEach(downgrade, extras, shadowRoot);
+    }
+    else if (node.nodeType === 1) {
+      forEach(downgrade, extras, /** @type {Element} */ (node));
     }
   };
 
@@ -236,13 +251,12 @@ if (!globalThis[so]) {
     if (args) {
       const [shadowRoot, mode] = args;
       propagate(node, shadowRoot, mode);
-      // this was for closed roots only but I think it'd be easier for whoever
-      // needs to handle ShadowRoots to just receive all of them in one go
-      // as opposite of checking it node.shadowRoot is null or something
       extras.push(new AugmentedRecord(node, new ShadowRootList(shadowRoot), []));
       // @ts-ignore
-      for (const node of shadowRoot.querySelectorAll('*'))
-        upgrade(extras, node);
+      forEach(upgrade, extras, shadowRoot);
+    }
+    else if (node.nodeType === 1) {
+      forEach(upgrade, extras, /** @type {Element} */ (node));
     }
   };
 
